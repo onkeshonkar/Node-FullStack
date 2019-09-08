@@ -2,10 +2,13 @@ const path = require('path');
 
 const express = require('express');
 const bodyParser = require('body-parser');
+const expressHbs = require('express-handlebars');
 
 const app = express();
 
-app.set('view engine', 'pug');
+//extname is used to support custom extensio(hbs) in layout file
+app.engine('hbs', expressHbs({ extname: 'hbs' }));
+app.set('view engine', 'hbs');
 app.set('views', 'views');
 
 const adminData = require('./routes/admin');
