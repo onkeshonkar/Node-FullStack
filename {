@@ -1,0 +1,30 @@
+class MethodChain {
+    constructor(num) {
+        this.num = num
+    }
+
+    add(a) {
+        this.num += a
+        return this
+    }
+
+    subtract(a) {
+        this.num -= a
+        return this
+    }
+
+    mul(a) {
+        this.num *= a
+        return this
+    }
+
+    get number() {
+        return this.num
+    }
+}
+
+const a = new MethodChain(5)
+
+a.add(20).subtract(10)
+
+console.log(a.number)
