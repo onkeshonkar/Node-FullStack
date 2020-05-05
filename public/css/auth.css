@@ -1,0 +1,10 @@
+.login-form {
+    width: 20rem;
+    max-width: 90%;
+    margin: auto;
+    display: block;
+}
+
+.right {
+    margin-left: 100px;
+}
