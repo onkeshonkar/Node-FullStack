@@ -1,22 +1,41 @@
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
-const PDFDocument = require('pdfkit');
+const PDFDocument = require("pdfkit");
 
-const Product = require('../models/product');
-const Order = require('../models/order');
+const Product = require("../models/product");
+const Order = require("../models/order");
+
+const ITEM_PER_PAGE = 4;
+
+const stripe = require('stripe')('sk_test_Pnjbrd07XwKUBXYMExhrE02n00fWrtYgFu');
 
 exports.getProducts = (req, res, next) => {
+    const page = +req.query.page || 1;
+    let totalItems;
+
     Product.find()
-        .then(products => {
-            console.log(products);
-            res.render('shop/product-list', {
+        .countDocuments()
+        .then((prodNum) => {
+            totalItems = prodNum;
+            return Product.find()
+                .skip((page - 1) * ITEM_PER_PAGE)
+                .limit(ITEM_PER_PAGE);
+        })
+        .then((products) => {
+            res.render("shop/product-list", {
                 prods: products,
-                pageTitle: 'All Products',
-                path: '/products',
+                pageTitle: "Products",
+                path: "/products",
+                currentPage: page,
+                hasNextPage: ITEM_PER_PAGE * page < totalItems,
+                hasPreviousPage: page > 1,
+                nextPage: page + 1,
+                previousPage: page - 1,
+                lastPage: Math.ceil(totalItems / ITEM_PER_PAGE),
             });
         })
-        .catch(err => {
+        .catch((err) => {
             console.log(err);
         });
 };
@@ -24,54 +43,76 @@ exports.getProducts = (req, res, next) => {
 exports.getProduct = (req, res, next) => {
     const prodId = req.params.productId;
     Product.findById(prodId)
-        .then(product => {
-            res.render('shop/product-detail', {
+        .then((product) => {
+            res.render("shop/product-detail", {
                 product: product,
                 pageTitle: product.title,
-                path: '/products',
+                path: "/products",
             });
         })
-        .catch(err => console.log(err));
+        .catch((err) => console.log(err));
 };
 
 exports.getIndex = (req, res, next) => {
+    const page = +req.query.page || 1;
+    let totalItems;
+
     Product.find()
-        .then(products => {
-            res.render('shop/index', {
+        .countDocuments()
+        .then((prodNum) => {
+            totalItems = prodNum;
+            return Product.find()
+                .skip((page - 1) * ITEM_PER_PAGE)
+                .limit(ITEM_PER_PAGE);
+        })
+        .then((products) => {
+            res.render("shop/index", {
                 prods: products,
-                pageTitle: 'Shop',
-                path: '/',
+                pageTitle: "Shop",
+                path: "/",
+                currentPage: page,
+                hasNextPage: ITEM_PER_PAGE * page < totalItems,
+                hasPreviousPage: page > 1,
+                nextPage: page + 1,
+                previousPage: page - 1,
+                lastPage: Math.ceil(totalItems / ITEM_PER_PAGE),
             });
         })
-        .catch(err => {
+        .catch((err) => {
             console.log(err);
         });
 };
 
 exports.getCart = (req, res, next) => {
     req.user
-        .populate('cart.items.productId')
+        .populate("cart.items.productId")
         .execPopulate()
-        .then(user => {
+        .then((user) => {
             const products = user.cart.items;
-            res.render('shop/cart', {
-                path: '/cart',
-                pageTitle: 'Your Cart',
+            let total = 0;
+            products.forEach(p => {
+                total += p.quantity * p.productId.price;
+            });
+
+            res.render("shop/cart", {
+                path: "/cart",
+                pageTitle: "Your cart",
                 products: products,
+                totalSum: total
             });
         })
-        .catch(err => console.log(err));
+        .catch((err) => console.log(err));
 };
 
 exports.postCart = (req, res, next) => {
     const prodId = req.body.productId;
     Product.findById(prodId)
-        .then(product => {
+        .then((product) => {
             return req.user.addToCart(product);
         })
-        .then(result => {
+        .then((result) => {
             console.log(result);
-            res.redirect('/cart');
+            res.redirect("/cart");
         });
 };
 
@@ -79,66 +120,163 @@ exports.postCartDeleteProduct = (req, res, next) => {
     const prodId = req.body.productId;
     req.user
         .removeFromCart(prodId)
-        .then(result => {
-            res.redirect('/cart');
+        .then((result) => {
+            res.redirect("/cart");
         })
-        .catch(err => console.log(err));
+        .catch((err) => console.log(err));
+};
+
+exports.getCheckout = (req, res, next) => {
+    req.user
+        .populate("cart.items.productId")
+        .execPopulate()
+        .then((user) => {
+            if (user.cart.items.length > 0) {
+                let totalSum = 0;
+                user.cart.items.forEach(p => {
+                    totalSum += p.quantity * p.productId.price;
+                });
+                return res.render("shop/checkout", {
+                    path: "/checkout",
+                    pageTitle: "Checkout",
+                    totalSum: totalSum
+                });
+            }
+            res.redirect('/');
+
+        })
+        .catch((err) => console.log(err));
 };
 
 exports.postOrder = (req, res, next) => {
+    let intent;
+    let order;
+    let totalSum = 0;
+    const generateResponse = (intent) => {
+        // Note that if your API version is before 2019-02-11, 'requires_action'
+        // appears as 'requires_source_action'.
+        if (
+            intent.status === 'requires_action' &&
+            intent.next_action.type === 'use_stripe_sdk'
+        ) {
+            // Tell the client to handle the action
+            return {
+                requires_action: true,
+                payment_intent_client_secret: intent.client_secret
+            };
+        } else if (intent.status === 'succeeded') {
+            // The payment didn’t need any additional actions and completed!
+            // Handle post-payment fulfillment
+            return {
+                success: true,
+                id: intent.id
+            };
+        } else {
+            // Invalid status
+            return {
+                // error: 'Invalid PaymentIntent status'
+                error: intent.message,
+                code: intent.code,
+                decline_code: intent.decline_code
+            }
+        }
+    };
     req.user
-        .populate('cart.items.productId')
+        .populate("cart.items.productId")
         .execPopulate()
-        .then(user => {
-            const products = user.cart.items.map(i => {
-                return { quantity: i.quantity, product: {...i.productId._doc } };
+        .then((user) => {
+            user.cart.items.forEach(p => {
+                totalSum += p.quantity * p.productId.price;
             });
-            const order = new Order({
+
+            const products = user.cart.items.map((i) => {
+                return { quantity: i.quantity, product: { ...i.productId._doc } };
+            });
+
+            order = new Order({
                 user: {
                     email: req.user.email,
-                    userId: req.user
+                    userId: req.user,
                 },
-                products: products
+                products: products,
             });
-            return order.save();
+            // console.log(totalSum);
+
+            if (req.body.payment_method_id) {
+                // Create the PaymentIntent
+                return stripe.paymentIntents.create({
+                    payment_method: req.body.payment_method_id,
+                    amount: totalSum * 100,
+                    currency: 'inr',
+                    confirmation_method: 'manual',
+                    confirm: true,
+                    metadata: {
+                        order_id: req.body.payment_method_id,
+                        user: req.user.email
+                    }
+                });
+            } else if (req.body.payment_intent_id) {
+                return stripe.paymentIntents.confirm(
+                    req.body.payment_intent_id
+                );
+            }
         })
-        .then(result => {
-            return req.user.clearCart();
+        .then(intnt => {
+            // console.log(intnt);
+            intent = intnt;
+            if (intent.status === 'succeeded') {
+                return order.save();
+            }
+            return;
+
+        })
+        .then((result) => {
+            if (intent.status === 'succeeded') {
+                return req.user.clearCart();
+            }
+            return;
         })
         .then(() => {
-            res.redirect('/orders');
+            res.send(generateResponse(intent));
         })
-        .catch(err => console.log(err));
+        .catch((err) => {
+            // console.log(err);
+            // res.send({error:err})
+            res.send(generateResponse(err));
+        });
 };
 
 exports.getOrders = (req, res, next) => {
-    Order.find({ 'user.userId': req.user._id })
-        .then(orders => {
-            res.render('shop/orders', {
-                path: '/orders',
-                pageTitle: 'Your Orders',
+    Order.find({ "user.userId": req.user._id })
+        .then((orders) => {
+            res.render("shop/orders", {
+                path: "/orders",
+                pageTitle: "Your Orders",
                 orders: orders,
             });
         })
-        .catch(err => console.log(err));
+        .catch((err) => console.log(err));
 };
 
 exports.getInvoice = (req, res, next) => {
     const orderId = req.params.orderId;
     Order.findById(orderId)
-        .then(order => {
+        .then((order) => {
             if (!order) {
-                return next(new Error('No order found!'));
+                return next(new Error("No order found!"));
             }
             if (order.user.userId.toString() !== req.user._id.toString()) {
-                return next(new Error('Unauthorized'));
+                return next(new Error("Unauthorized"));
             }
-            const invoiceName = 'invoice-' + orderId + '.pdf';
-            const invoicepath = path.join('data', 'invoices', invoiceName);
+            const invoiceName = "invoice-" + orderId + ".pdf";
+            const invoicepath = path.join("data", "invoices", invoiceName);
 
             const pdfDoc = new PDFDocument({ margin: 50 });
-            res.setHeader('Content-Type', 'application/pdf');
-            res.setHeader('Content-Disposition', 'inline; filename="' + invoiceName + '"');
+            res.setHeader("Content-Type", "application/pdf");
+            res.setHeader(
+                "Content-Disposition",
+                'inline; filename="' + invoiceName + '"'
+            );
             pdfDoc.pipe(fs.createWriteStream(invoicepath));
             pdfDoc.pipe(res);
 
@@ -148,11 +286,10 @@ exports.getInvoice = (req, res, next) => {
                 .text(`Email: ${req.user.email}`, 200, 65, { align: "right" })
                 .moveDown()
                 .fontSize(10)
-                .text(
-                    " Thank you for your business.",
-                    50,
-                    700, { align: "center", width: 500 }
-                );
+                .text(" Thank you for your business.", 50, 700, {
+                    align: "center",
+                    width: 500,
+                });
             pdfDoc
                 .fontSize(10)
                 .text(`Item`, 60, 150)
@@ -175,10 +312,13 @@ exports.getInvoice = (req, res, next) => {
                     .fontSize(10)
                     .text(`${prod.product.title}`, 60, y)
                     .text(`${prod.product.description}`, 170, y)
-                    .text(`$ ${prod.product.price}`, 270, y, { width: 90, align: "right" })
+                    .text(`$ ${prod.product.price}`, 270, y, {
+                        width: 90,
+                        align: "right",
+                    })
                     .text(`${prod.quantity}`, 350, y, { width: 90, align: "right" })
-                    .text(`$ ${price}`, 0, y, { align: "right" })
-            })
+                    .text(`$ ${price}`, 0, y, { align: "right" });
+            });
 
             pdfDoc
                 .moveDown(5)
@@ -196,6 +336,5 @@ exports.getInvoice = (req, res, next) => {
             // const file = fs.createReadStream(invoicepath);
             // file.pipe(res);
         })
-        .catch(err => next(err));
-
-}
+        .catch((err) => next(err));
+};

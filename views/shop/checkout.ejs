@@ -1,0 +1,23 @@
+<%- include('../includes/head.ejs') %>
+<link rel="stylesheet" href="/css/checkout.css">
+<script src="https://js.stripe.com/v3/"></script>
+</head>
+
+<body>
+  <%- include('../includes/navigation.ejs') %>
+  <main>
+    <form id='payment-form'>
+      <hr>
+      <label class="centered">
+        Enter Your Card details
+      </label>
+
+      <label>
+        <!-- placeholder for Elements -->
+        <div id="card-element"></div>
+      </label>
+      <button class="btn centered" type="submit">Pay &#8377; <%= totalSum %></button>
+    </form>
+  </main>
+  <script src="/js/card.js"></script>
+  <%- include('../includes/end.ejs') %>

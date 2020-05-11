@@ -1,7 +1,11 @@
 .orders {
     list-style: none;
     padding: 0;
-    margin: 0;
+    margin: 0 ;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+
 }
 
 .orders__item h1 {
@@ -13,6 +17,7 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.26);
     padding: 1rem;
     margin-bottom: 1rem;
+    width: 100%;
 }
 
 .orders__products {
@@ -23,11 +28,9 @@
 
 .orders__products-item {
     margin: 0.5rem 0;
-    padding: 0.5rem;
-    /* border: 1px solid #00695c; */
+    padding: 0.5rem 1rem;
+    border: 1px solid #00695c;
     color: #00695c;
-}
-
-.orders__products-item span {
-    margin-left: 100px;
+    display: flex;
+    justify-content: space-between;
 }

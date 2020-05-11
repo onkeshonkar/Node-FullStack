@@ -25,13 +25,17 @@
                 </form>
             </li>
             <% }) %>
+            <div class="centered">
+                <h2>Total: &#8377; <%= totalSum %></h2>
+            </div>
         </ul>
         <hr>
         <div class="centered">
-            <form action="/create-order" method="POST">
+            <!-- <form action="/create-order" method="POST">
                 <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                 <button type="submit" class="btn">Order Now!</button>
-            </form>
+            </form> -->
+            <a class="btn" href="/checkout">Order Now</a>
         </div>
 
         <% } else { %>
