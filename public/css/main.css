@@ -198,15 +198,18 @@ form {
 
 .card__image {
   padding: 10px;
-  /* height: 100px; */
-  width: 100%;
+  height: 300px;
+  /* width: 200; */
+  object-fit: contain;
+  display: flex;
+  justify-content: center;
 }
 
 .card__image img {
-  /* background-position: center;
-    background-size: cover;
-    height: auto; */
-  width: 100%;
+  width: auto;
+  height: auto;
+  max-height: 100%;
+  max-width: 100%;
 }
 
 .card__actions {
