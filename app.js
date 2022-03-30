@@ -15,8 +15,7 @@ const User = require("./models/user");
 const shopController = require('./controllers/shop');
 const isAuth = require('./middleware/is-auth')
 
-const MONGODB_URI =
-    "mongodb+srv://onkesh_onkar:onkesh@1998@cluster0-s8dke.mongodb.net/shop";
+const MONGODB_URI = Paste you MongoDB url
 
 const app = express();
 const store = new MongoDBStore({
